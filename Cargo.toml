@@ -1,9 +1,9 @@
 [package]
 name = "prompt-store"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Tristan Granier <graniet75@gmail.com>"]
-description = "A secure, encrypted CLI tool for managing and organizing prompts with tags, variables, and search capabilities"
+description = "Prompt Store is a secure, encrypted CLI and Rust library for managing, deploying, and orchestrating AI prompts using workspaces and Git-based workflows."
 license = "MIT"
 repository = "https://github.com/graniet/prompt-store"
 homepage = "https://github.com/graniet/prompt-store"

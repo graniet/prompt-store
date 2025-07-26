@@ -1,23 +1,27 @@
 # Prompt Store
 
-**Prompt Store** is a secure, encrypted CLI and Rust library for managing and orchestrating AI prompts. Built with **AES-256-GCM encryption**, it provides a robust vault for your prompt templates, allowing you to organize, version, and execute them across various LLM backends.
+Prompt Store is a secure, collaborative CLI and Rust library for managing, deploying, and orchestrating AI prompts using **workspaces** and **Git-based workflows**. Built with **AES-256-GCM encryption**, it provides a robust vault for your prompt templates, allowing you to organize, version, and execute them across various LLM backends.
 
-With a fluent, builder-style API and a powerful interactive CLI, you can create simple prompts or complex multi-step chains with advanced logic like conditional execution and parallel processing.
+With a fluent, builder-style API and a powerful interactive CLI, you can create simple prompts or complex multi-step chains with advanced logic like conditional execution, parallel processing, and error fallbacks.
 
 ## Key Features
 
-  - **Secure Vault**: All prompts are encrypted at rest with AES-256-GCM, optionally protected by a master password.
-  - **Powerful CLI**: Manage your prompts with intuitive commands for creation, listing, editing, and versioning.
-  - **Interactive Mode**: A REPL-style `interactive` command for rapid prompt exploration and execution.
-  - **Tagging and Search**: Organize prompts with tags and find them easily with powerful search capabilities.
-  - **Fluent Library API**: A developer-friendly, chainable API for integrating prompt execution into your Rust applications.
-  - **Advanced Chaining**:
-      - Build multi-step, multi-provider prompt chains programmatically.
-      - Execute steps in **parallel** for improved performance.
-      - Use **conditional steps** (`step_if`) for dynamic workflow logic.
-      - Define **fallbacks** (`on_error`) for robust error handling.
-  - **Variable Substitution**: Prompts are templates that accept variables from initial input and the outputs of previous steps.
-  - **Version History**: Automatically creates backups on edits, allowing you to view history and revert to previous versions.
+-   **Secure Vault**: All prompts are encrypted at rest with AES-256-GCM, optionally protected by a master password that never leaves your machine.
+-   **Workspaces & Git-based Deployment ("PromptOps")**:
+    -   Isolate prompts into distinct workspaces (e.g., `default` for personal, `seo-pack` for a deployed set).
+    -   Deploy "Prompt Packs" directly from public or private Git repositories using `prompt-store deploy`.
+    -   Keep packs up-to-date with a simple `prompt-store update` command.
+    -   Create and share team prompts with password-protected bundles (`prompts.bundle`) using `prompt-store pack export`.
+-   **Schema Definition**: Optionally define input/output **JSON schemas** for your prompts to ensure reliable, structured data from LLMs.
+-   **Advanced Orchestration**:
+    -   Build multi-step, multi-provider prompt chains programmatically.
+    -   Execute steps in **parallel** for improved performance.
+    -   Use **conditional steps** (`step_if`) for dynamic workflow logic.
+    -   Define **fallbacks** (`on_error`) for robust error handling.
+-   **Powerful CLI**: Manage every aspect of your prompts with intuitive commands, including an interactive REPL mode (`prompt-store interactive`).
+-   **Fluent Library API**: A developer-friendly, chainable API for integrating prompt execution directly into your Rust applications.
+-   **Version History**: Automatically creates backups on edits, allowing you to view history and revert to previous versions.
+
 
 ## Installation
 

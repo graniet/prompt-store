@@ -1,6 +1,6 @@
 use crate::core::{
     storage::{AppCtx, PromptData},
-    utils::next_id,
+    utils::new_id,
 };
 use aes_gcm::{
     aead::{Aead, AeadCore, OsRng},
@@ -40,7 +40,7 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
         .map_err(|e| format!("Editor error: {}", e))?
         .unwrap_or_default();
 
-    let id = next_id(&ctx.prompts_dir)?.to_string();
+    let id = new_id(&ctx.prompts_dir);
     let pd = PromptData {
         id: id.clone(),
         title: title.clone(),
@@ -67,6 +67,6 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).ok();
     }
-    println!("{} {} - {}", style("•").green().bold(), id, title);
+    println!("{} Prompt saved with ID {} and title '{}'", style("•").green().bold(), style(&id).yellow(), title);
     Ok(())
 }

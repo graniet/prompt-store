@@ -1,6 +1,6 @@
 use crate::core::{
     storage::{AppCtx, PromptData},
-    utils::next_id,
+    utils::new_id,
 };
 use aes_gcm::{
     aead::{Aead, AeadCore, OsRng},
@@ -32,7 +32,7 @@ pub fn run(ctx: &AppCtx, file: &str) -> Result<(), String> {
     for mut pd in bundle {
         let mut target_id = pd.id.clone();
         while ctx.prompt_path(&target_id).exists() {
-            target_id = next_id(&ctx.prompts_dir)?.to_string();
+            target_id = new_id(&ctx.prompts_dir);
         }
         pd.id = target_id.clone();
 

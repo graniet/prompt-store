@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use super::crypto::load_or_generate_key;
 
 /// Prompt structure.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct PromptData {
     pub id: String,
     pub title: String,
@@ -62,7 +62,7 @@ impl AppCtx {
 }
 
 /// Decrypt prompt header (ID and title only).
-pub fn decrypt_prompt_title(path: &Path, cipher: &Aes256Gcm) -> Result<(String, String), String> {
+pub fn decrypt_prompt_header(path: &Path, cipher: &Aes256Gcm) -> Result<(String, String), String> {
     let encoded = fs::read_to_string(path).map_err(|_| "Read error".to_string())?;
     let decoded = general_purpose::STANDARD
         .decode(encoded.trim_end())

@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use rand::{distributions::Alphanumeric, Rng};
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -17,20 +18,19 @@ pub fn ensure_dir(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Compute next numeric ID.
-pub fn next_id(dir: &Path) -> Result<u64, String> {
-    let mut max_id = 0;
-    if dir.exists() {
-        for entry in fs::read_dir(dir).map_err(|e| format!("Unable to read dir: {}", e))? {
-            let ent = entry.map_err(|e| format!("Dir read error: {}", e))?;
-            if let Some(name) = ent.file_name().to_str() {
-                if let Ok(n) = name.split('.').next().unwrap_or("").parse::<u64>() {
-                    if n > max_id {
-                        max_id = n;
-                    }
-                }
-            }
+/// Generate a new unique alphanumeric ID.
+pub fn new_id(dir: &Path) -> String {
+    loop {
+        let id: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(8)
+            .map(char::from)
+            .collect::<String>()
+            .to_lowercase();
+        
+        let path = dir.join(format!("{}.prompt", &id));
+        if !path.exists() {
+            return id;
         }
     }
-    Ok(max_id + 1)
 }

@@ -63,7 +63,6 @@ async fn run_chain(
         // Step 1: Always run sentiment analysis.
         .step("sentiment", "Sentiment Check")
             .with_provider("openai")
-        
         // Step 2 (Conditional): Only run if the sentiment is "positive".
         .step_if("positive_reply", "Positive Reply", |prev_outputs| {
             matches!(prev_outputs.get("sentiment"), Some(s) if s.trim().eq_ignore_ascii_case("positive"))

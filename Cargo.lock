@@ -1673,11 +1673,13 @@ dependencies = [
  "console 0.16.0",
  "copypasta",
  "dialoguer",
+ "futures",
  "llm",
  "rand",
  "regex",
  "serde",
  "serde_json",
+ "shell-words",
  "thiserror 1.0.69",
  "tokio",
 ]

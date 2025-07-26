@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use super::crypto::load_or_generate_key;
 
-/// Prompt structure.
+/// Data for a single, storable prompt.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PromptData {
     pub id: String,
@@ -20,7 +20,14 @@ pub struct PromptData {
     pub tags: Vec<String>,
 }
 
-/// Runtime context.
+/// Metadata for a prompt chain.
+#[derive(Serialize, Deserialize)]
+pub struct ChainData {
+    pub id: String,
+    pub title: String,
+}
+
+/// Runtime context holding paths and encryption keys.
 pub struct AppCtx {
     pub base_dir: PathBuf,
     pub prompts_dir: PathBuf,
@@ -56,12 +63,20 @@ impl AppCtx {
         })
     }
 
+    /// Constructs the full path for a prompt file from its ID.
+    /// Handles both standalone prompts (`id`) and chain steps (`chain_id/step_num`).
     pub fn prompt_path(&self, id: &str) -> PathBuf {
-        self.prompts_dir.join(format!("{}.prompt", id))
+        if let Some((chain_id, step_id)) = id.split_once('/') {
+            self.prompts_dir
+                .join(chain_id)
+                .join(format!("{}.prompt", step_id))
+        } else {
+            self.prompts_dir.join(format!("{}.prompt", id))
+        }
     }
 }
 
-/// Decrypt prompt header (ID and title only).
+/// Decrypts a prompt file to read its ID and title.
 pub fn decrypt_prompt_header(path: &Path, cipher: &Aes256Gcm) -> Result<(String, String), String> {
     let encoded = fs::read_to_string(path).map_err(|_| "Read error".to_string())?;
     let decoded = general_purpose::STANDARD

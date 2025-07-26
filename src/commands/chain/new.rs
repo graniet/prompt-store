@@ -1,0 +1,153 @@
+use crate::core::storage::{AppCtx, ChainData, PromptData};
+use crate::core::utils::{ensure_dir, new_id};
+use crate::ui::theme;
+use aes_gcm::aead::{Aead, AeadCore, OsRng};
+use aes_gcm::Aes256Gcm;
+use base64::{engine::general_purpose, Engine as _};
+use console::style;
+use dialoguer::{Confirm, Editor, Input};
+use std::fs;
+
+/// Creates a new prompt chain interactively.
+///
+/// This function prompts the user to enter a chain title, creates a new chain directory,
+/// and then allows the user to add multiple prompts to the chain. Each prompt is stored
+/// as an encrypted file within the chain directory.
+///
+/// # Arguments
+///
+/// * `ctx` - The application context containing encryption cipher and directory paths
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the chain was created successfully, or an error message if something went wrong.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use crate::core::storage::AppCtx;
+///
+/// let ctx = AppCtx::init().unwrap();
+/// run(&ctx).unwrap();
+/// ```
+pub fn run(ctx: &AppCtx) -> Result<(), String> {
+    let theme = theme();
+
+    let title: String = Input::with_theme(&theme)
+        .with_prompt("Chain Title")
+        .interact_text()
+        .map_err(|e| format!("Title error: {}", e))?;
+    if title.trim().is_empty() {
+        return Err("Title cannot be empty".to_string());
+    }
+
+    let chain_id = new_id(&ctx.prompts_dir);
+    let chain_dir = ctx.prompts_dir.join(&chain_id);
+    ensure_dir(&chain_dir)?;
+
+    let chain_data = ChainData {
+        id: chain_id.clone(),
+        title: title.clone(),
+    };
+
+    let chain_meta_path = chain_dir.join("chain.meta");
+    let json = serde_json::to_vec(&chain_data).map_err(|e| format!("Serialize error: {}", e))?;
+    encrypt_and_write(&ctx.cipher, &chain_meta_path, &json)?;
+
+    println!(
+        "\n{} Chain '{}' created with ID {}.",
+        style("•").green().bold(),
+        style(&title).cyan(),
+        style(&chain_id).yellow()
+    );
+    println!("Now, let's add prompts to the chain.");
+
+    let mut step_counter = 1;
+    loop {
+        if !Confirm::with_theme(&theme)
+            .with_prompt(format!("Add prompt #{}?", step_counter))
+            .default(true)
+            .interact()
+            .map_err(|e| format!("Confirmation error: {}", e))?
+        {
+            break;
+        }
+
+        let prompt_title: String = Input::with_theme(&theme)
+            .with_prompt(format!("Title for prompt #{}", step_counter))
+            .interact_text()
+            .map_err(|e| format!("Title error: {}", e))?;
+
+        let tags_line: String = Input::with_theme(&theme)
+            .with_prompt("Tags (comma‑separated, optional)")
+            .allow_empty(true)
+            .interact_text()
+            .map_err(|e| format!("Tags error: {}", e))?;
+        let tags: Vec<String> = tags_line
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        let content = Editor::new()
+            .edit("Enter prompt content. Use {{var}} for variables.")
+            .map_err(|e| format!("Editor error: {}", e))?
+            .unwrap_or_default();
+
+        let prompt_id = format!("{}/{}", &chain_id, step_counter);
+        let pd = PromptData {
+            id: prompt_id,
+            title: prompt_title.clone(),
+            content,
+            tags,
+        };
+
+        let prompt_path = chain_dir.join(format!("{}.prompt", step_counter));
+        let json = serde_json::to_vec(&pd).map_err(|e| format!("Serialize error: {}", e))?;
+        encrypt_and_write(&ctx.cipher, &prompt_path, &json)?;
+
+        println!(
+            "  {} Added prompt '{}'",
+            style("└─").green(),
+            style(prompt_title).cyan()
+        );
+        step_counter += 1;
+    }
+
+    println!("\n{} Chain '{}' saved.", style("✔").green().bold(), title);
+    Ok(())
+}
+
+/// Encrypts data and writes it to a file.
+///
+/// This function takes raw data, encrypts it using AES-256-GCM with a random nonce,
+/// encodes the result as Base64, and writes it to the specified file path.
+///
+/// # Arguments
+///
+/// * `cipher` - The AES-256-GCM cipher instance to use for encryption
+/// * `path` - The file path where the encrypted data should be written
+/// * `data` - The raw data to encrypt and write
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the data was encrypted and written successfully,
+/// or an error message if encryption or file writing failed.
+fn encrypt_and_write(
+    cipher: &Aes256Gcm,
+    path: &std::path::Path,
+    data: &[u8],
+) -> Result<(), String> {
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let cipher_bytes = cipher
+        .encrypt(&nonce, data)
+        .map_err(|_| "Encrypt error".to_string())?;
+
+    let mut out = Vec::with_capacity(12 + cipher_bytes.len());
+    out.extend_from_slice(&nonce);
+    out.extend_from_slice(&cipher_bytes);
+    let encoded = general_purpose::STANDARD.encode(&out);
+
+    fs::write(path, encoded).map_err(|e| format!("Write error: {}", e))?;
+    Ok(())
+}

@@ -15,6 +15,34 @@ use super::utils::ensure_dir;
 
 const MAGIC_PSWD: &[u8; 4] = b"PSWD";
 
+/// Decrypts the master key using a provided password.
+pub fn decrypt_key_with_password(key_data: &[u8], password: &str) -> Result<Vec<u8>, String> {
+    if !key_data.starts_with(MAGIC_PSWD) {
+        return Err("Key is not password protected.".to_string());
+    }
+    if key_data.len() < 4 + 16 + 12 {
+        return Err("Corrupted password key".to_string());
+    }
+    let salt = &key_data[4..20];
+    let nonce = Nonce::from_slice(&key_data[20..32]);
+    let cipher_bytes = &key_data[32..];
+
+    let mut pwd_key = [0u8; 32];
+    Argon2::default()
+        .hash_password_into(password.as_bytes(), salt, &mut pwd_key)
+        .map_err(|_| "KDF error".to_string())?;
+
+    let tmp_cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&pwd_key));
+    let raw = tmp_cipher
+        .decrypt(nonce, cipher_bytes)
+        .map_err(|_| "Invalid password".to_string())?;
+
+    if raw.len() != 32 {
+        return Err("Corrupted key".to_string());
+    }
+    Ok(raw)
+}
+
 /// Load or create encryption key.
 pub fn load_or_generate_key(path: &Path) -> Result<(Vec<u8>, bool), String> {
     if path.exists() {
@@ -25,29 +53,11 @@ pub fn load_or_generate_key(path: &Path) -> Result<(Vec<u8>, bool), String> {
             .map_err(|e| format!("Unable to read key: {}", e))?;
 
         if buf.starts_with(MAGIC_PSWD) {
-            if buf.len() < 4 + 16 + 12 {
-                return Err("Corrupted password key".to_string());
-            }
-            let salt = &buf[4..20];
-            let nonce = Nonce::from_slice(&buf[20..32]);
-            let cipher_bytes = &buf[32..];
-
             let password = Password::new()
                 .with_prompt("Password")
                 .interact()
                 .map_err(|e| format!("Password error: {}", e))?;
-            let mut pwd_key = [0u8; 32];
-            Argon2::default()
-                .hash_password_into(password.as_bytes(), salt, &mut pwd_key)
-                .map_err(|_| "KDF error".to_string())?;
-
-            let tmp_cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&pwd_key));
-            let raw = tmp_cipher
-                .decrypt(nonce, cipher_bytes)
-                .map_err(|_| "Invalid password".to_string())?;
-            if raw.len() != 32 {
-                return Err("Corrupted key".to_string());
-            }
+            let raw = decrypt_key_with_password(&buf, &password)?;
             Ok((raw, true))
         } else {
             if buf.len() != 32 {

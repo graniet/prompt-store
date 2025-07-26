@@ -67,6 +67,11 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).ok();
     }
-    println!("{} Prompt saved with ID {} and title '{}'", style("•").green().bold(), style(&id).yellow(), title);
+    println!(
+        "{} Prompt saved with ID {} and title '{}'",
+        style("•").green().bold(),
+        style(&id).yellow(),
+        title
+    );
     Ok(())
 }

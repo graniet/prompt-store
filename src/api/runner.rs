@@ -14,6 +14,16 @@ use super::{
     RunOutput,
 };
 
+/// Represents the source of a prompt for a chain step.
+enum PromptSource {
+    /// Load the prompt from the store using its ID or title.
+    Stored(String),
+    /// Use a raw, in-memory string as the prompt template.
+    Raw(String),
+}
+
+// --- PromptRunner for single prompts ---
+
 /// A fluent builder to configure and execute a single stored prompt.
 pub struct PromptRunner<'a> {
     store: &'a PromptStore,
@@ -72,10 +82,9 @@ impl<'a> PromptRunner<'a> {
 
 // --- ChainRunner for multi-step chains ---
 
-#[derive(Clone)]
-pub(crate) struct ChainStepDefinition {
+struct ChainStepDefinition {
     pub output_key: String,
-    pub prompt_id_or_title: String,
+    pub source: PromptSource,
     pub provider_id: Option<String>,
     pub mode: MultiChainStepMode,
 }
@@ -99,19 +108,34 @@ impl<'a> ChainRunner<'a> {
         }
     }
 
-    /// Adds a new step to the chain.
+    /// Adds a new step to the chain using a prompt from the store.
     ///
     /// # Arguments
     ///
     /// * `output_key` - The name of the variable where this step's output will be stored.
-    ///   This key can be used in subsequent prompt templates (e.g., `{{output_key}}`).
-    /// * `prompt` - The ID or title of the prompt to load from the store for this step.
-    pub fn step(mut self, output_key: &str, prompt: &str) -> Self {
+    /// * `prompt_id_or_title` - The ID or title of the prompt to load from the store.
+    pub fn step(mut self, output_key: &str, prompt_id_or_title: &str) -> Self {
         self.steps.push(ChainStepDefinition {
             output_key: output_key.to_string(),
-            prompt_id_or_title: prompt.to_string(),
+            source: PromptSource::Stored(prompt_id_or_title.to_string()),
             provider_id: None,
             mode: MultiChainStepMode::Completion, // Default mode
+        });
+        self
+    }
+
+    /// Adds a new step to the chain using a raw string as the prompt template.
+    ///
+    /// # Arguments
+    ///
+    /// * `output_key` - The name of the variable for this step's output.
+    /// * `prompt_content` - The raw string content of the prompt.
+    pub fn step_raw(mut self, output_key: &str, prompt_content: &str) -> Self {
+        self.steps.push(ChainStepDefinition {
+            output_key: output_key.to_string(),
+            source: PromptSource::Raw(prompt_content.to_string()),
+            provider_id: None,
+            mode: MultiChainStepMode::Completion,
         });
         self
     }
@@ -169,11 +193,15 @@ impl<'a> ChainRunner<'a> {
                     step_def.output_key
                 ))
             })?;
-            let prompt_data = self.store.find_prompt(&step_def.prompt_id_or_title)?;
+
+            let prompt_content = match step_def.source {
+                PromptSource::Stored(id_or_title) => self.store.find_prompt(&id_or_title)?.content,
+                PromptSource::Raw(content) => content,
+            };
 
             // Pre-render initial variables, but leave placeholders for step outputs.
             let rendered_template = re
-                .replace_all(&prompt_data.content, |caps: &regex::Captures| {
+                .replace_all(&prompt_content, |caps: &regex::Captures| {
                     let key = &caps[1];
                     if self.vars.contains_key(key) && !step_ids.contains(key) {
                         self.vars.get(key).unwrap().clone()
@@ -196,7 +224,6 @@ impl<'a> ChainRunner<'a> {
         Ok(RunOutput::Chain(result_map))
     }
 }
-
 
 /// Renders a template string with the given variables.
 fn render_template(template: &str, vars: &HashMap<String, String>) -> String {

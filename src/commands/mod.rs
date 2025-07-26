@@ -1,3 +1,4 @@
+pub mod chain;
 pub mod copy;
 pub mod delete;
 pub mod edit;

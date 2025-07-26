@@ -1,6 +1,6 @@
+use rand::{distributions::Alphanumeric, Rng};
 use std::fs;
 use std::path::Path;
-use rand::{distributions::Alphanumeric, Rng};
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -27,7 +27,7 @@ pub fn new_id(dir: &Path) -> String {
             .map(char::from)
             .collect::<String>()
             .to_lowercase();
-        
+
         let path = dir.join(format!("{}.prompt", &id));
         if !path.exists() {
             return id;

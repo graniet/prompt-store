@@ -11,7 +11,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// List all stored prompts
+    /// List all stored prompts and chains
     List,
     /// Create a new prompt
     New,
@@ -68,6 +68,15 @@ enum Cmd {
         #[arg(long, help = "Protect the new key with a password")]
         password: bool,
     },
+    /// Manage prompt chains
+    #[command(subcommand)]
+    Chain(ChainCmd),
+}
+
+#[derive(Subcommand)]
+enum ChainCmd {
+    /// Create a new multi-step prompt chain interactively
+    New,
 }
 
 fn main() {
@@ -101,5 +110,8 @@ fn run() -> Result<(), String> {
         Cmd::History { id } => commands::history::run(&ctx, &id),
         Cmd::Revert { id, timestamp } => commands::revert::run(&ctx, &id, timestamp.as_deref()),
         Cmd::RotateKey { password } => commands::rotate_key::run(&ctx, password),
+        Cmd::Chain(chain_cmd) => match chain_cmd {
+            ChainCmd::New => commands::chain::new::run(&ctx),
+        },
     }
 }

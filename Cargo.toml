@@ -1,6 +1,6 @@
 [package]
 name = "prompt-store"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Tristan Granier <graniet75@gmail.com>"]
 description = "A secure, encrypted CLI tool for managing and organizing prompts with tags, variables, and search capabilities"

@@ -26,7 +26,7 @@ With a fluent, builder-style API and a powerful interactive CLI, you can create 
 You can install the command-line tool directly from the repository:
 
 ```shell
-cargo install --git https://github.com/graniet/prompt-store.git
+cargo install prompt-store
 ```
 
 *Ensure `~/.cargo/bin` is in your shell's `PATH`.*
@@ -37,7 +37,7 @@ To use `prompt-store` as a library in your Rust project, add this to your `Cargo
 
 ```toml
 [dependencies]
-prompt-store = { git = "https://github.com/graniet/prompt-store.git" }
+prompt-store = "0.1.1"
 ```
 
 ## CLI Usage

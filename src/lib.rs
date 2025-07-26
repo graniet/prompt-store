@@ -13,6 +13,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Initialize the store once. This handles loading the encryption key.
+//!     // For non-interactive environments, prefer `PromptStore::with_password("my-secret")`.
 //!     let store = PromptStore::init()?;
 //!
 //!     // Setup LLM providers

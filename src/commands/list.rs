@@ -29,28 +29,23 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
                 let chain_meta_path = path.join("chain.meta");
                 if let Ok(chain_data) = decrypt_chain_meta(&chain_meta_path, &ctx.cipher) {
                     let mut steps = vec![];
-                    for step_entry in
-                        fs::read_dir(&path).map_err(|e| format!("Read dir error: {}", e))?
-                    {
-                        let step_ent = step_entry.map_err(|e| format!("Dir read error: {}", e))?;
-                        let step_path = step_ent.path();
-                        if step_path.is_file()
-                            && step_path.extension().and_then(|s| s.to_str()) == Some("prompt")
-                        {
-                            if let Ok((id, title)) = decrypt_prompt_header(&step_path, &ctx.cipher)
-                            {
-                                let step_num_str = id.split('/').last().unwrap_or("0");
-                                if let Ok(step_num) = step_num_str.parse::<u32>() {
-                                    steps.push((step_num, id, title));
+                    if let Ok(dir_entries) = fs::read_dir(&path) {
+                        for step_entry in dir_entries {
+                            if let Ok(step_ent) = step_entry {
+                                let step_path = step_ent.path();
+                                if step_path.is_file() && step_path.extension().and_then(|s| s.to_str()) == Some("prompt") {
+                                    if let Ok((id, title)) = decrypt_prompt_header(&step_path, &ctx.cipher) {
+                                        let step_num_str = id.split('/').last().unwrap_or("0");
+                                        if let Ok(step_num) = step_num_str.parse::<u32>() {
+                                            steps.push((step_num, id, title));
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                     steps.sort_by_key(|(k, _, _)| *k);
-                    let formatted_steps = steps
-                        .into_iter()
-                        .map(|(_, id, title)| (id, title))
-                        .collect();
+                    let formatted_steps = steps.into_iter().map(|(_, id, title)| (id, title)).collect();
 
                     items.push(ListItem::Chain {
                         id: chain_data.id,
@@ -71,14 +66,8 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
         println!("{}", style("No saved prompts or chains").green().bold());
     } else {
         items.sort_by(|a, b| {
-            let id_a = match a {
-                ListItem::Standalone(id, _) => id,
-                ListItem::Chain { id, .. } => id,
-            };
-            let id_b = match b {
-                ListItem::Standalone(id, _) => id,
-                ListItem::Chain { id, .. } => id,
-            };
+            let id_a = match a { ListItem::Standalone(id, _) => id, ListItem::Chain { id, .. } => id };
+            let id_b = match b { ListItem::Standalone(id, _) => id, ListItem::Chain { id, .. } => id };
             id_a.cmp(id_b)
         });
 
@@ -86,26 +75,12 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
         for item in items {
             match item {
                 ListItem::Standalone(id, title) => {
-                    println!(
-                        "  {} {} - {}",
-                        style("•").green(),
-                        style(id).yellow(),
-                        title
-                    );
+                    println!("  {} {} - {}", style("•").green(), style(id).yellow(), title);
                 }
                 ListItem::Chain { id, title, steps } => {
-                    println!(
-                        "  {} {} (Chain) - {}",
-                        style("•").blue(),
-                        style(id).yellow(),
-                        title
-                    );
+                    println!("  {} {} (Chain) - {}", style("•").blue(), style(id).yellow(), title);
                     for (i, (step_id, step_title)) in steps.iter().enumerate() {
-                        let prefix = if i == steps.len() - 1 {
-                            "  └─"
-                        } else {
-                            "  ├─"
-                        };
+                        let prefix = if i == steps.len() - 1 { "  └─" } else { "  ├─" };
                         println!("{} {} - {}", prefix, style(step_id).dim(), step_title);
                     }
                 }

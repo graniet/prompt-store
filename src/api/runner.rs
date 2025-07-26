@@ -1,11 +1,11 @@
 //! Fluent runners for executing single prompts or complex chains.
 
 use llm::{
-    chain::{MultiChainStepBuilder, MultiChainStepMode, MultiPromptChain},
+    chain::{MultiChainStepMode},
     LLMProvider,
 };
 use regex::Regex;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::{
     error::{RunError, StoreError},
@@ -82,18 +82,19 @@ impl<'a> PromptRunner<'a> {
 
 // --- ChainRunner for multi-step chains ---
 
-struct ChainStepDefinition {
+struct ChainStepDefinition<'a> {
     pub output_key: String,
     pub source: PromptSource,
     pub provider_id: Option<String>,
     pub mode: MultiChainStepMode,
+    pub condition: Option<Box<dyn Fn(&HashMap<String, String>) -> bool + 'a>>,
 }
 
 /// A fluent builder to define and execute a multi-step prompt chain.
 pub struct ChainRunner<'a> {
     store: &'a PromptStore,
     backend: LLMBackendRef<'a>,
-    steps: Vec<ChainStepDefinition>,
+    steps: Vec<ChainStepDefinition<'a>>,
     vars: HashMap<String, String>,
 }
 
@@ -120,6 +121,7 @@ impl<'a> ChainRunner<'a> {
             source: PromptSource::Stored(prompt_id_or_title.to_string()),
             provider_id: None,
             mode: MultiChainStepMode::Completion, // Default mode
+            condition: None,
         });
         self
     }
@@ -136,6 +138,24 @@ impl<'a> ChainRunner<'a> {
             source: PromptSource::Raw(prompt_content.to_string()),
             provider_id: None,
             mode: MultiChainStepMode::Completion,
+            condition: None,
+        });
+        self
+    }
+
+    /// Adds a conditional step to the chain from the store. The step only runs if the closure returns `true`.
+    ///
+    /// The closure receives a map of the outputs from all previously executed steps.
+    pub fn step_if<F>(mut self, output_key: &str, prompt_id_or_title: &str, condition: F) -> Self
+    where
+        F: Fn(&HashMap<String, String>) -> bool + 'a,
+    {
+        self.steps.push(ChainStepDefinition {
+            output_key: output_key.to_string(),
+            source: PromptSource::Stored(prompt_id_or_title.to_string()),
+            provider_id: None,
+            mode: MultiChainStepMode::Completion,
+            condition: Some(Box::new(condition)),
         });
         self
     }
@@ -167,7 +187,7 @@ impl<'a> ChainRunner<'a> {
             .collect();
         self
     }
-
+    
     /// Executes the entire chain sequentially.
     ///
     /// The output of each step becomes available as a variable for all subsequent steps.
@@ -177,52 +197,53 @@ impl<'a> ChainRunner<'a> {
             LLMBackendRef::Provider(_) => {
                 return Err(StoreError::Configuration(
                     "ChainRunner requires an LLMRegistry, not a single Provider.".to_string(),
-                )
-                .into())
+                ).into());
             }
         };
 
-        let mut multi_chain = MultiPromptChain::new(reg);
-        let step_ids: HashSet<_> = self.steps.iter().map(|s| s.output_key.clone()).collect();
-        let re = Regex::new(r"\{\{\s*(\w+)\s*\}\}").unwrap();
+        let mut context = self.vars.clone();
+        let mut final_outputs = HashMap::new();
 
         for step_def in self.steps {
-            let provider_id = step_def.provider_id.ok_or_else(|| {
+            // Check condition if it exists
+            if let Some(condition) = &step_def.condition {
+                if !condition(&final_outputs) {
+                    continue; // Skip this step
+                }
+            }
+
+            let provider_id = step_def.provider_id.as_deref().ok_or_else(|| {
                 StoreError::Configuration(format!(
                     "Step '{}' is missing a provider ID.",
                     step_def.output_key
                 ))
             })?;
+            
+            let provider = reg.get(provider_id).ok_or_else(|| StoreError::Configuration(format!("Provider '{}' not found in registry", provider_id)))?;
 
             let prompt_content = match step_def.source {
                 PromptSource::Stored(id_or_title) => self.store.find_prompt(&id_or_title)?.content,
                 PromptSource::Raw(content) => content,
             };
+            
+            let rendered_template = render_template(&prompt_content, &context);
+            
+            // Execute the step
+            let step_output = {
+                use llm::chat::ChatMessage;
+                let req = ChatMessage::user().content(&rendered_template).build();
+                let resp = provider.chat(&[req]).await?;
+                resp.text().unwrap_or_default()
+            };
 
-            // Pre-render initial variables, but leave placeholders for step outputs.
-            let rendered_template = re
-                .replace_all(&prompt_content, |caps: &regex::Captures| {
-                    let key = &caps[1];
-                    if self.vars.contains_key(key) && !step_ids.contains(key) {
-                        self.vars.get(key).unwrap().clone()
-                    } else {
-                        caps[0].to_string()
-                    }
-                })
-                .into_owned();
-
-            let multi_step = MultiChainStepBuilder::new(step_def.mode)
-                .provider_id(&provider_id)
-                .id(&step_def.output_key)
-                .template(rendered_template)
-                .build()?;
-
-            multi_chain = multi_chain.step(multi_step);
+            // Update context for next steps
+            context.insert(step_def.output_key.clone(), step_output.clone());
+            final_outputs.insert(step_def.output_key.clone(), step_output);
         }
 
-        let result_map = multi_chain.run().await?;
-        Ok(RunOutput::Chain(result_map))
+        Ok(RunOutput::Chain(final_outputs))
     }
+
 }
 
 /// Renders a template string with the given variables.
@@ -230,7 +251,10 @@ fn render_template(template: &str, vars: &HashMap<String, String>) -> String {
     let re = Regex::new(r"\{\{\s*(\w+)\s*\}\}").unwrap();
     re.replace_all(template, |caps: &regex::Captures| {
         let key = &caps[1];
-        vars.get(key).map(|s| s.as_str()).unwrap_or("").to_string()
+        vars.get(key)
+            .map(|s| s.as_str())
+            .unwrap_or("")
+            .to_string()
     })
     .into_owned()
 }

@@ -19,7 +19,7 @@ enum Cmd {
     Get { id: String },
     /// Edit an existing prompt
     Edit { id: String },
-    /// Delete a prompt by ID
+    /// Delete a prompt or chain by ID
     Delete { id: String },
     /// Rename a prompt's title
     Rename {

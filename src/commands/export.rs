@@ -1,48 +1,47 @@
-use crate::core::storage::{AppCtx, PromptData};
+use crate::core::storage::{decrypt_full_prompt, AppCtx, PromptData};
 use aes_gcm::{
     aead::{Aead, AeadCore, OsRng},
     Aes256Gcm,
 };
 use base64::{engine::general_purpose, Engine as _};
 use console::style;
-use serde_json;
 use std::fs;
 
-/// Export prompts to encrypted file.
+/// Export specified prompts from the default workspace for personal backup.
+/// The output file is encrypted with the user's local master key.
 pub fn run(ctx: &AppCtx, ids: Option<&str>, out_path: &str) -> Result<(), String> {
-    let wanted: Option<Vec<&str>> = ids.map(|s| s.split(',').map(|x| x.trim()).collect());
-    let mut bundle = Vec::new();
+    let mut bundle: Vec<PromptData> = Vec::new();
+    let default_workspace = ctx.workspaces_dir.join("default");
 
-    if ctx.prompts_dir.exists() {
-        for entry in fs::read_dir(&ctx.prompts_dir).map_err(|e| format!("Read dir error: {}", e))? {
-            let ent = entry.map_err(|e| format!("Dir read error: {}", e))?;
-
-            let file_id_string = ent.file_name().to_string_lossy().to_string();
-            let file_id = file_id_string.split('.').next().unwrap_or("").to_string();
-
-            if let Some(ref list) = wanted {
-                if !list.contains(&file_id.as_str()) {
-                    continue;
-                }
+    if let Some(id_list_str) = ids {
+        // Export specific prompts by ID
+        let id_list: Vec<&str> = id_list_str.split(',').map(|s| s.trim()).collect();
+        for id in id_list {
+            let prompt_path = ctx.prompt_path(id); // This correctly defaults to the 'default' workspace
+            if !prompt_path.exists() {
+                return Err(format!(
+                    "Prompt with ID '{}' not found in default workspace.",
+                    id
+                ));
             }
-
-            let encoded =
-                fs::read_to_string(ent.path()).map_err(|e| format!("Read error: {}", e))?;
-            let decoded = general_purpose::STANDARD
-                .decode(encoded.trim_end())
-                .map_err(|_| "Corrupted data".to_string())?;
-            if decoded.len() < 12 {
-                continue;
-            }
-            let (nonce_bytes, cipher_bytes) = decoded.split_at(12);
-            let plaintext = ctx
-                .cipher
-                .decrypt(aes_gcm::Nonce::from_slice(nonce_bytes), cipher_bytes)
-                .map_err(|_| "Decrypt error".to_string())?;
-            let pd: PromptData =
-                serde_json::from_slice(&plaintext).map_err(|_| "Invalid JSON".to_string())?;
-            bundle.push(pd);
+            bundle.push(decrypt_full_prompt(&prompt_path, &ctx.cipher)?);
         }
+    } else {
+        // Export all prompts from the default workspace
+        if !default_workspace.is_dir() {
+            return Err("Default workspace does not exist.".to_string());
+        }
+        for entry in fs::read_dir(&default_workspace).map_err(|e| e.to_string())? {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("prompt") {
+                bundle.push(decrypt_full_prompt(&path, &ctx.cipher)?);
+            }
+            // Note: This simple export does not recurse into chains.
+        }
+    }
+
+    if bundle.is_empty() {
+        return Err("No prompts found to export.".to_string());
     }
 
     let serialized = serde_json::to_vec(&bundle).map_err(|e| format!("Serialize error: {}", e))?;
@@ -57,6 +56,11 @@ pub fn run(ctx: &AppCtx, ids: Option<&str>, out_path: &str) -> Result<(), String
     let encoded = general_purpose::STANDARD.encode(&out);
 
     fs::write(out_path, encoded).map_err(|e| format!("Write error: {}", e))?;
-    println!("{} exported to {}", style("•").green().bold(), out_path);
+    println!(
+        "{} Successfully exported {} prompts to {}",
+        style("•").green().bold(),
+        bundle.len(),
+        out_path
+    );
     Ok(())
 }

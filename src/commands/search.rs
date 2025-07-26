@@ -15,8 +15,10 @@ pub fn run(
     let tag = tag_filter.map(|s| s.to_lowercase());
     let mut hits = Vec::new();
 
-    if ctx.prompts_dir.exists() {
-        for entry in fs::read_dir(&ctx.prompts_dir).map_err(|e| format!("Read dir error: {}", e))? {
+    if ctx.workspaces_dir.exists() {
+        for entry in
+            fs::read_dir(&ctx.workspaces_dir).map_err(|e| format!("Read dir error: {}", e))?
+        {
             let ent = entry.map_err(|e| format!("Dir read error: {}", e))?;
             let encoded =
                 fs::read_to_string(ent.path()).map_err(|e| format!("Read error: {}", e))?;

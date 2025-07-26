@@ -9,27 +9,6 @@ use dialoguer::{Confirm, Editor, Input};
 use std::fs;
 
 /// Creates a new prompt chain interactively.
-///
-/// This function prompts the user to enter a chain title, creates a new chain directory,
-/// and then allows the user to add multiple prompts to the chain. Each prompt is stored
-/// as an encrypted file within the chain directory.
-///
-/// # Arguments
-///
-/// * `ctx` - The application context containing encryption cipher and directory paths
-///
-/// # Returns
-///
-/// Returns `Ok(())` if the chain was created successfully, or an error message if something went wrong.
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// use crate::core::storage::AppCtx;
-///
-/// let ctx = AppCtx::init().unwrap();
-/// run(&ctx).unwrap();
-/// ```
 pub fn run(ctx: &AppCtx) -> Result<(), String> {
     let theme = theme();
 
@@ -41,8 +20,8 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
         return Err("Title cannot be empty".to_string());
     }
 
-    let chain_id = new_id(&ctx.prompts_dir);
-    let chain_dir = ctx.prompts_dir.join(&chain_id);
+    let chain_id = new_id(&ctx.workspaces_dir);
+    let chain_dir = ctx.workspaces_dir.join(&chain_id);
     ensure_dir(&chain_dir)?;
 
     let chain_data = ChainData {
@@ -100,6 +79,7 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
             title: prompt_title.clone(),
             content,
             tags,
+            schema: None, // Schemas are not defined for chain sub-prompts in this flow
         };
 
         let prompt_path = chain_dir.join(format!("{}.prompt", step_counter));
@@ -118,21 +98,6 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
     Ok(())
 }
 
-/// Encrypts data and writes it to a file.
-///
-/// This function takes raw data, encrypts it using AES-256-GCM with a random nonce,
-/// encodes the result as Base64, and writes it to the specified file path.
-///
-/// # Arguments
-///
-/// * `cipher` - The AES-256-GCM cipher instance to use for encryption
-/// * `path` - The file path where the encrypted data should be written
-/// * `data` - The raw data to encrypt and write
-///
-/// # Returns
-///
-/// Returns `Ok(())` if the data was encrypted and written successfully,
-/// or an error message if encryption or file writing failed.
 fn encrypt_and_write(
     cipher: &Aes256Gcm,
     path: &std::path::Path,

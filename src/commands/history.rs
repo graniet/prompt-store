@@ -6,8 +6,10 @@ use std::fs;
 pub fn run(ctx: &AppCtx, id: &str) -> Result<(), String> {
     let mut backups = Vec::new();
 
-    if ctx.prompts_dir.exists() {
-        for entry in fs::read_dir(&ctx.prompts_dir).map_err(|e| format!("Read dir error: {}", e))? {
+    if ctx.workspaces_dir.exists() {
+        for entry in
+            fs::read_dir(&ctx.workspaces_dir).map_err(|e| format!("Read dir error: {}", e))?
+        {
             let ent = entry.map_err(|e| format!("Dir read error: {}", e))?;
             let fname = ent.file_name();
             if let Some(name) = fname.to_str() {

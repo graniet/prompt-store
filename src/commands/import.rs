@@ -32,7 +32,7 @@ pub fn run(ctx: &AppCtx, file: &str) -> Result<(), String> {
     for mut pd in bundle {
         let mut target_id = pd.id.clone();
         while ctx.prompt_path(&target_id).exists() {
-            target_id = new_id(&ctx.prompts_dir);
+            target_id = new_id(&ctx.workspaces_dir);
         }
         pd.id = target_id.clone();
 

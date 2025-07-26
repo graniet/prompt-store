@@ -14,8 +14,10 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
     let mut prompts_in_chains = 0;
     let mut tag_counts: HashMap<String, usize> = HashMap::new();
 
-    if ctx.prompts_dir.exists() {
-        for entry in fs::read_dir(&ctx.prompts_dir).map_err(|e| format!("Read dir error: {}", e))? {
+    if ctx.workspaces_dir.exists() {
+        for entry in
+            fs::read_dir(&ctx.workspaces_dir).map_err(|e| format!("Read dir error: {}", e))?
+        {
             let path = entry.map_err(|e| format!("Dir entry error: {}", e))?.path();
             if path.is_dir() {
                 chain_count += 1;

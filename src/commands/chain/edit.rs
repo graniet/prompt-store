@@ -10,7 +10,7 @@ use std::path::Path;
 
 /// Edit the title of an existing chain.
 pub fn run(ctx: &AppCtx, chain_id: &str) -> Result<(), String> {
-    let chain_dir = ctx.prompts_dir.join(chain_id);
+    let chain_dir = ctx.workspaces_dir.join(chain_id);
     if !chain_dir.is_dir() {
         return Err(format!("Chain with ID '{}' not found.", chain_id));
     }

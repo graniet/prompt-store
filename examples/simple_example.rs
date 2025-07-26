@@ -27,7 +27,7 @@ async fn main() {
 
     // Execute a prompt with variables and get the result
     let result = store
-        .prompt("welcome")
+        .prompt("prompt-store-example::nin5pgu6")
         .vars([("name", "Alice")])
         .backend(openai_llm.as_ref())
         .run()

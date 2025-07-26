@@ -1,5 +1,5 @@
 use crate::core::{
-    storage::{AppCtx, PromptData},
+    storage::{AppCtx, PromptData, PromptSchema},
     utils::new_id,
 };
 use aes_gcm::{
@@ -8,10 +8,11 @@ use aes_gcm::{
 };
 use base64::{engine::general_purpose, Engine as _};
 use console::style;
-use dialoguer::{theme::ColorfulTheme, Editor, Input};
+use dialoguer::{theme::ColorfulTheme, Confirm, Editor, Input};
+use serde_json::Value;
 use std::fs;
 
-/// Create a new prompt.
+/// Create a new prompt in the default workspace.
 pub fn run(ctx: &AppCtx) -> Result<(), String> {
     let theme = ColorfulTheme::default();
 
@@ -34,18 +35,60 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
         .filter(|s| !s.is_empty())
         .collect();
 
-    println!("{}", style("Opening editor…").yellow().bold());
     let content = Editor::new()
         .edit("Enter your prompt content here.")
         .map_err(|e| format!("Editor error: {}", e))?
         .unwrap_or_default();
 
-    let id = new_id(&ctx.prompts_dir);
+    let mut schema = None;
+    if Confirm::with_theme(&theme)
+        .with_prompt("Define an I/O schema for this prompt?")
+        .default(false)
+        .interact()
+        .unwrap_or(false)
+    {
+        println!(
+            "{}",
+            style("Opening editor for schema... (use JSON format)").yellow()
+        );
+        let schema_template = r#"{
+  "inputs": {
+    "type": "object",
+    "properties": {
+      "variable_name": { "type": "string", "description": "Description of the variable." }
+    },
+    "required": ["variable_name"]
+  },
+  "output": {
+    "type": "object",
+    "properties": {
+      "output_field": { "type": "string", "description": "Description of the output field." }
+    },
+    "required": ["output_field"]
+  }
+}"#;
+        let schema_str = Editor::new()
+            .edit(schema_template)
+            .map_err(|e| format!("Editor error: {}", e))?
+            .unwrap_or_default();
+
+        if !schema_str.trim().is_empty() {
+            let schema_json: Value = serde_json::from_str(&schema_str)
+                .map_err(|e| format!("Invalid JSON in schema: {}", e))?;
+            let inputs = schema_json.get("inputs").cloned();
+            let output = schema_json.get("output").cloned();
+            schema = Some(PromptSchema { inputs, output });
+        }
+    }
+
+    let default_workspace = ctx.workspaces_dir.join("default");
+    let id = new_id(&default_workspace);
     let pd = PromptData {
         id: id.clone(),
         title: title.clone(),
         content,
         tags,
+        schema,
     };
 
     let json = serde_json::to_vec(&pd).map_err(|e| format!("Serialize error: {}", e))?;
@@ -60,6 +103,7 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
     out.extend_from_slice(&cipher_bytes);
     let encoded = general_purpose::STANDARD.encode(&out);
 
+    // Use prompt_path with the implicit default workspace
     let path = ctx.prompt_path(&id);
     fs::write(&path, encoded).map_err(|e| format!("Write error: {}", e))?;
     #[cfg(unix)]

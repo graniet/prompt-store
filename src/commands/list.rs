@@ -1,43 +1,52 @@
-use crate::core::storage::{decrypt_prompt_header, AppCtx, ChainData, PromptData};
+use crate::core::storage::{decrypt_full_prompt, AppCtx, ChainData};
 use aes_gcm::aead::Aead;
 use aes_gcm::Nonce;
 use base64::{engine::general_purpose, Engine as _};
 use console::style;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-enum ListItem {
-    Standalone(String, String),
-    Chain { id: String, title: String },
+struct WorkspaceContent {
+    standalone_prompts: Vec<(String, String)>,
+    chains: Vec<(String, String)>,
 }
 
 /// List every saved prompt and chain, with optional tag filtering.
 pub fn run(ctx: &AppCtx, tags: &[String]) -> Result<(), String> {
-    let mut items = Vec::new();
     let tag_filter: HashSet<_> = tags.iter().map(|t| t.to_lowercase()).collect();
     let is_filtering = !tag_filter.is_empty();
 
-    if ctx.prompts_dir.exists() {
-        for entry in fs::read_dir(&ctx.prompts_dir).map_err(|e| format!("Read dir error: {}", e))? {
-            let ent = entry.map_err(|e| format!("Dir entry error: {}", e))?;
-            let path = ent.path();
+    let mut workspaces: BTreeMap<String, WorkspaceContent> = BTreeMap::new();
 
-            if path.is_dir() {
-                // This is a chain
+    for entry in fs::read_dir(&ctx.workspaces_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let workspace_name = entry.file_name().to_string_lossy().to_string();
+        let mut content = WorkspaceContent {
+            standalone_prompts: Vec::new(),
+            chains: Vec::new(),
+        };
+
+        for item in fs::read_dir(&path).map_err(|e| e.to_string())? {
+            let item_path = item.map_err(|e| e.to_string())?.path();
+            if item_path.is_dir() {
+                // It's a chain
                 if is_filtering {
                     continue;
-                } // Note: Tag filtering doesn't apply to chains for now.
-                let chain_meta_path = path.join("chain.meta");
-                if let Ok(chain_data) = decrypt_chain_meta(&chain_meta_path, &ctx.cipher) {
-                    items.push(ListItem::Chain {
-                        id: chain_data.id,
-                        title: chain_data.title,
-                    });
                 }
-            } else if path.extension().and_then(|s| s.to_str()) == Some("prompt") {
-                // This is a standalone prompt
-                if let Ok(prompt) = decrypt_full_prompt(&path, &ctx.cipher) {
+                if let Ok(chain_data) =
+                    decrypt_chain_meta(&item_path.join("chain.meta"), &ctx.cipher)
+                {
+                    content.chains.push((chain_data.id, chain_data.title));
+                }
+            } else if item_path.extension().and_then(|s| s.to_str()) == Some("prompt") {
+                // Standalone prompt
+                if let Ok(prompt) = decrypt_full_prompt(&item_path, &ctx.cipher) {
                     if is_filtering {
                         let prompt_tags: HashSet<_> =
                             prompt.tags.iter().map(|t| t.to_lowercase()).collect();
@@ -45,13 +54,20 @@ pub fn run(ctx: &AppCtx, tags: &[String]) -> Result<(), String> {
                             continue;
                         }
                     }
-                    items.push(ListItem::Standalone(prompt.id, prompt.title));
+                    content.standalone_prompts.push((prompt.id, prompt.title));
                 }
             }
         }
+
+        content.standalone_prompts.sort_by(|a, b| a.0.cmp(&b.0));
+        content.chains.sort_by(|a, b| a.0.cmp(&b.0));
+
+        if !content.standalone_prompts.is_empty() || !content.chains.is_empty() {
+            workspaces.insert(workspace_name, content);
+        }
     }
 
-    if items.is_empty() {
+    if workspaces.is_empty() {
         println!(
             "{}",
             style("No matching prompts or chains found.")
@@ -59,68 +75,38 @@ pub fn run(ctx: &AppCtx, tags: &[String]) -> Result<(), String> {
                 .bold()
         );
     } else {
-        items.sort_by(|a, b| {
-            let id_a = match a {
-                ListItem::Standalone(id, _) => id,
-                ListItem::Chain { id, .. } => id,
-            };
-            let id_b = match b {
-                ListItem::Standalone(id, _) => id,
-                ListItem::Chain { id, .. } => id,
-            };
-            id_a.cmp(id_b)
-        });
+        for (name, content) in workspaces {
+            println!("\nWorkspace: {}", style(name.clone()).bold().cyan());
+            if content.standalone_prompts.is_empty() && content.chains.is_empty() {
+                println!("  (empty)");
+                continue;
+            }
 
-        println!("{}", style("Saved Prompts & Chains:").green().bold());
-        for item in items {
-            match item {
-                ListItem::Standalone(ref id, ref title) => {
-                    println!(
-                        "  {} {} - {}",
-                        style("•").green(),
-                        style(id).yellow(),
-                        title
-                    );
-                }
-                ListItem::Chain { ref id, ref title } => {
-                    println!(
-                        "  {} {} (Chain) - {}",
-                        style("•").blue(),
-                        style(id).yellow(),
-                        title
-                    );
-                    let chain_dir = ctx.prompts_dir.join(id);
-                    if let Ok(entries) = fs::read_dir(chain_dir) {
-                        let mut steps: Vec<(u32, String, String)> = entries
-                            .filter_map(|entry| {
-                                let path = entry.ok()?.path();
-                                if path.is_file()
-                                    && path.extension().and_then(|s| s.to_str()) == Some("prompt")
-                                {
-                                    if let Ok((step_id, step_title)) =
-                                        decrypt_prompt_header(&path, &ctx.cipher)
-                                    {
-                                        let step_num =
-                                            path.file_stem()?.to_str()?.parse::<u32>().ok()?;
-                                        return Some((step_num, step_id, step_title));
-                                    }
-                                }
-                                None
-                            })
-                            .collect();
-
-                        steps.sort_by_key(|(k, _, _)| *k);
-
-                        for (i, (_, step_id, step_title)) in steps.iter().enumerate() {
-                            let prefix = if i == steps.len() - 1 {
-                                "  └─"
-                            } else {
-                                "  ├─"
-                            };
-                            println!("{} {} - {}", prefix, style(step_id).dim(), step_title);
-                        }
-                    }
-                }
+            for (id, title) in content.standalone_prompts {
+                let display_id = if name == "default" {
+                    id.clone()
+                } else {
+                    format!("{}::{}", name, id)
+                };
+                println!(
+                    "  {} {} - {}",
+                    style("•").green(),
+                    style(display_id).yellow(),
+                    title
+                );
+            }
+            for (id, title) in content.chains {
+                let display_id = if name == "default" {
+                    id.clone()
+                } else {
+                    format!("{}::{}", name, id)
+                };
+                println!(
+                    "  {} {} (Chain) - {}",
+                    style("•").blue(),
+                    style(display_id).yellow(),
+                    title
+                );
             }
         }
     }
@@ -130,11 +116,6 @@ pub fn run(ctx: &AppCtx, tags: &[String]) -> Result<(), String> {
 fn decrypt_chain_meta(path: &Path, cipher: &aes_gcm::Aes256Gcm) -> Result<ChainData, String> {
     let plaintext = decrypt_file(path, cipher)?;
     serde_json::from_slice(&plaintext).map_err(|_| "Invalid JSON for ChainData".to_string())
-}
-
-fn decrypt_full_prompt(path: &Path, cipher: &aes_gcm::Aes256Gcm) -> Result<PromptData, String> {
-    let plaintext = decrypt_file(path, cipher)?;
-    serde_json::from_slice(&plaintext).map_err(|_| "Invalid JSON for PromptData".to_string())
 }
 
 fn decrypt_file(path: &Path, cipher: &aes_gcm::Aes256Gcm) -> Result<Vec<u8>, String> {

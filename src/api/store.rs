@@ -23,24 +23,26 @@ pub struct PromptStore {
 }
 
 impl PromptStore {
-    fn new_from_key(key_bytes: Vec<u8>, is_from_password: bool) -> Result<Self, StoreError> {
+    fn new_from_key(key_bytes: Vec<u8>) -> Result<Self, StoreError> {
         let home = env::var("HOME").map_err(|e| StoreError::Init(e.to_string()))?;
         let base_dir = PathBuf::from(home).join(".prompt-store");
         let key_path = base_dir.join("keys").join("key.bin");
-        let prompts_dir = base_dir.join("prompts");
+        let workspaces_dir = base_dir.join("workspaces");
+        let registries_dir = base_dir.join("registries");
 
         ensure_dir(&base_dir).map_err(StoreError::Init)?;
-        ensure_dir(&prompts_dir).map_err(StoreError::Init)?;
+        ensure_dir(&workspaces_dir).map_err(StoreError::Init)?;
+        ensure_dir(&registries_dir).map_err(StoreError::Init)?;
+        ensure_dir(&workspaces_dir.join("default")).map_err(StoreError::Init)?;
 
         let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key_bytes));
 
         let ctx = AppCtx {
             base_dir,
-            prompts_dir,
+            workspaces_dir,
+            registries_dir,
             key_path,
             cipher,
-            key_bytes,
-            key_from_password: is_from_password,
         };
 
         Ok(Self { ctx })
@@ -80,7 +82,7 @@ impl PromptStore {
         let decrypted_key =
             decrypt_key_with_password(&key_data, password).map_err(StoreError::Init)?;
 
-        Self::new_from_key(decrypted_key, true)
+        Self::new_from_key(decrypted_key)
     }
 
     /// Creates a runner for executing a single prompt.
@@ -103,9 +105,9 @@ impl PromptStore {
     }
 
     /// Internal logic for finding and decrypting a prompt by its ID or title.
-    /// Searches both standalone prompts and prompts inside chains.
+    /// Searches local prompts, chain prompts, and cached prompts from deployed packs.
     pub(crate) fn find_prompt(&self, id_or_title: &str) -> Result<PromptData, StoreError> {
-        // First, try to load by full ID directly (e.g., "abcdef12" or "abcdef12/1").
+        // First, try to load by full ID directly (e.g., "abcdef12", "chain/1", or "pack::abc").
         let prompt_path = self.ctx.prompt_path(id_or_title);
         if prompt_path.exists() {
             return self.decrypt_prompt_file(&prompt_path);
@@ -113,9 +115,9 @@ impl PromptStore {
 
         // If not found, search all prompts by title. This is more expensive.
         let mut found_prompts = vec![];
-        if self.ctx.prompts_dir.exists() {
+        if self.ctx.workspaces_dir.exists() {
             self.find_prompts_by_title_recursive(
-                &self.ctx.prompts_dir,
+                &self.ctx.workspaces_dir,
                 id_or_title,
                 &mut found_prompts,
             )?;
@@ -140,11 +142,9 @@ impl PromptStore {
         for entry in fs::read_dir(dir)? {
             let path = entry?.path();
             if path.is_dir() {
-                // It's a chain directory, recurse into it.
                 self.find_prompts_by_title_recursive(&path, title_query, found)?;
             } else if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("prompt")
             {
-                // It's a prompt file, check its title.
                 if let Ok(pd) = self.decrypt_prompt_file(&path) {
                     if pd.title.eq_ignore_ascii_case(title_query) {
                         found.push(pd);

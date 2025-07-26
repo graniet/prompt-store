@@ -9,7 +9,7 @@ use std::fs;
 
 /// Add a new prompt step to an existing chain.
 pub fn run(ctx: &AppCtx, chain_id: &str) -> Result<(), String> {
-    let chain_dir = ctx.prompts_dir.join(chain_id);
+    let chain_dir = ctx.workspaces_dir.join(chain_id);
     if !chain_dir.is_dir() {
         return Err(format!("Chain with ID '{}' not found.", chain_id));
     }
@@ -60,6 +60,7 @@ pub fn run(ctx: &AppCtx, chain_id: &str) -> Result<(), String> {
         title: prompt_title.clone(),
         content,
         tags,
+        schema: None, // Schemas are not defined for chain sub-prompts in this flow
     };
 
     let prompt_path = chain_dir.join(format!("{}.prompt", next_step));

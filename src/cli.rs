@@ -18,7 +18,7 @@ pub enum Cmd {
     },
     /// Create a new prompt
     New,
-    /// Get a specific prompt by ID
+    /// Get a specific prompt by ID (including namespaced IDs like `pack::id`)
     Get { id: String },
     /// Edit an existing prompt
     Edit { id: String },
@@ -74,6 +74,25 @@ pub enum Cmd {
     /// Manage prompt chains
     #[command(subcommand)]
     Chain(ChainCmd),
+    /// Manage prompt packs for sharing and deployment
+    #[command(subcommand)]
+    Pack(PackCmd),
+    /// Deploy a prompt pack from a git repository
+    Deploy {
+        /// URL of the git repository to deploy
+        repo_url: String,
+        /// Optional local alias for the pack
+        #[arg(long)]
+        alias: Option<String>,
+        /// Password for private/encrypted packs (can also be set via PROMPT_PACK_PASSWORD env var)
+        #[arg(long, env = "PROMPT_PACK_PASSWORD")]
+        password: Option<String>,
+    },
+    /// Update deployed prompt pack(s)
+    Update {
+        /// The alias of a specific pack to update. If omitted, all packs are updated.
+        alias: Option<String>,
+    },
     /// Show store statistics
     Stats,
     /// Start an interactive session (REPL)
@@ -92,5 +111,15 @@ pub enum ChainCmd {
     RmStep {
         #[arg(help = "The ID of the step to remove (e.g., mychain/1)")]
         step_id: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum PackCmd {
+    /// Export a workspace to a 'prompts.bundle' file for sharing
+    Export {
+        /// Workspace to export (defaults to 'default')
+        #[arg(long)]
+        workspace: Option<String>,
     },
 }

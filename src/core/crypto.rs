@@ -90,8 +90,10 @@ pub fn load_or_generate_key(path: &Path) -> Result<(Vec<u8>, bool), String> {
 /// Rotate encryption key, optional password protection.
 pub fn rotate_key(ctx: &AppCtx, use_password: bool) -> Result<(), String> {
     let mut plain = Vec::new();
-    if ctx.prompts_dir.exists() {
-        for entry in fs::read_dir(&ctx.prompts_dir).map_err(|e| format!("Read dir error: {}", e))? {
+    if ctx.workspaces_dir.exists() {
+        for entry in
+            fs::read_dir(&ctx.workspaces_dir).map_err(|e| format!("Read dir error: {}", e))?
+        {
             let ent = entry.map_err(|e| format!("Dir read error: {}", e))?;
             let encoded =
                 fs::read_to_string(ent.path()).map_err(|e| format!("Read error: {}", e))?;

@@ -7,10 +7,12 @@ use base64::{engine::general_purpose, Engine as _};
 use console::style;
 use dialoguer::{Confirm, Editor, Input};
 use std::fs;
+use std::path::Path;
 
-/// Creates a new prompt chain interactively.
+/// Creates a new prompt chain interactively in the default workspace.
 pub fn run(ctx: &AppCtx) -> Result<(), String> {
     let theme = theme();
+    let default_workspace = ctx.workspaces_dir.join("default");
 
     let title: String = Input::with_theme(&theme)
         .with_prompt("Chain Title")
@@ -20,8 +22,8 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
         return Err("Title cannot be empty".to_string());
     }
 
-    let chain_id = new_id(&ctx.workspaces_dir);
-    let chain_dir = ctx.workspaces_dir.join(&chain_id);
+    let chain_id = new_id(&default_workspace);
+    let chain_dir = default_workspace.join(&chain_id);
     ensure_dir(&chain_dir)?;
 
     let chain_data = ChainData {
@@ -100,7 +102,7 @@ pub fn run(ctx: &AppCtx) -> Result<(), String> {
 
 fn encrypt_and_write(
     cipher: &Aes256Gcm,
-    path: &std::path::Path,
+    path: &Path,
     data: &[u8],
 ) -> Result<(), String> {
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);

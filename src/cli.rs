@@ -18,7 +18,7 @@ pub enum Cmd {
     },
     /// Create a new prompt
     New,
-    /// Get a specific prompt by ID (including namespaced IDs like `pack::id`)
+    /// Get a specific prompt by ID (e.g., `my-prompt` or `my-pack::my-prompt`)
     Get { id: String },
     /// Edit an existing prompt
     Edit { id: String },
@@ -43,20 +43,31 @@ pub enum Cmd {
     Tag { id: String, changes: Vec<String> },
     /// Copy a prompt to clipboard
     Copy { id: String },
-    /// Run a prompt with variable substitution
+    /// Generate a response by executing a prompt with an LLM
     Run {
+        /// ID of the prompt to execute (e.g., `my-prompt` or `pack::my-prompt`)
+        id: String,
+        /// LLM backend to use, e.g., 'openai:gpt-4o-mini'
+        #[arg(long)]
+        backend: String,
+        /// Variable assignments in key=value format
+        #[arg(long = "var")]
+        vars: Vec<String>,
+    },
+    /// Render a prompt with variable substitution (local only)
+    Render {
         id: String,
         #[arg(long = "var", help = "Variable assignments in key=value format")]
         vars: Vec<String>,
     },
-    /// Export prompts to a file
+    /// Export prompts to a file for personal backup
     Export {
-        #[arg(long, help = "Comma-separated list of prompt IDs to export")]
+        #[arg(long, help = "Comma-separated list of prompt IDs to export from the default workspace")]
         ids: Option<String>,
         #[arg(long, help = "Output file path")]
         out: String,
     },
-    /// Import prompts from a file
+    /// Import prompts from a personal backup file
     Import { file: String },
     /// Show prompt revision history
     History { id: String },
@@ -81,7 +92,7 @@ pub enum Cmd {
     Deploy {
         /// URL of the git repository to deploy
         repo_url: String,
-        /// Optional local alias for the pack
+        /// Optional local alias for the pack (defaults to repo name)
         #[arg(long)]
         alias: Option<String>,
         /// Password for private/encrypted packs (can also be set via PROMPT_PACK_PASSWORD env var)
@@ -103,6 +114,21 @@ pub enum Cmd {
 pub enum ChainCmd {
     /// Create a new multi-step prompt chain interactively
     New,
+    /// Import a YAML chain definition into the default workspace
+    Import {
+        /// Path to the YAML file defining the chain
+        file: String,
+        /// The ID to assign to the chain
+        #[arg(long)]
+        id: String,
+    },
+    /// Run a stored prompt chain
+    Run {
+        /// The ID of the chain to run (e.g., `my-chain` or `my-pack::my-chain`)
+        id: String,
+        #[arg(long = "var", help = "Variable assignments in key=value format")]
+        vars: Vec<String>,
+    },
     /// Edit a chain's metadata (e.g., title)
     Edit { id: String },
     /// Add a new step to an existing chain

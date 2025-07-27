@@ -54,7 +54,9 @@ pub fn run(ctx: &AppCtx, tags: &[String]) -> Result<(), String> {
                             continue;
                         }
                     }
-                    content.standalone_prompts.push((prompt.id, prompt.title));
+                    content
+                        .standalone_prompts
+                        .push((prompt.id, prompt.title));
                 }
             }
         }

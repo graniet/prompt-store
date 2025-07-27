@@ -16,6 +16,7 @@ pub mod new;
 pub mod pack;
 pub mod pack_logic;
 pub mod rename;
+pub mod render;
 pub mod revert;
 pub mod rotate_key;
 pub mod run;
@@ -40,7 +41,8 @@ pub async fn dispatch(command: Cmd, ctx: &AppCtx) -> Result<(), String> {
         } => search::run(ctx, &query, tag.as_deref(), content),
         Cmd::Tag { id, changes } => tag::run(ctx, &id, &changes),
         Cmd::Copy { id } => copy::run(ctx, &id),
-        Cmd::Run { id, vars } => run::run(ctx, &id, &vars),
+        Cmd::Run { id, backend, vars } => run::run(ctx, &id, &backend, &vars).await,
+        Cmd::Render { id, vars } => render::run(ctx, &id, &vars),
         Cmd::Export { ids, out } => export::run(ctx, ids.as_deref(), &out),
         Cmd::Import { file } => import::run(ctx, &file),
         Cmd::History { id } => history::run(ctx, &id),
@@ -56,6 +58,8 @@ pub async fn dispatch(command: Cmd, ctx: &AppCtx) -> Result<(), String> {
         Cmd::Update { alias } => update::run(ctx, alias.as_deref()).await,
         Cmd::Chain(chain_cmd) => match chain_cmd {
             ChainCmd::New => chain::new::run(ctx),
+            ChainCmd::Import { file, id } => chain::import::run(ctx, &file, &id),
+            ChainCmd::Run { id, vars } => chain::run::run(ctx, &id, &vars).await,
             ChainCmd::Edit { id } => chain::edit::run(ctx, &id),
             ChainCmd::AddStep { id } => chain::add_step::run(ctx, &id),
             ChainCmd::RmStep { step_id } => chain::rm_step::run(ctx, &step_id),

@@ -1,4 +1,4 @@
-use crate::core::storage::{AppCtx, PromptData};
+use crate::core::storage::{parse_id, AppCtx, PromptData};
 use crate::ui::theme;
 use aes_gcm::aead::{Aead, AeadCore, OsRng};
 use aes_gcm::Aes256Gcm;
@@ -9,7 +9,9 @@ use std::fs;
 
 /// Add a new prompt step to an existing chain.
 pub fn run(ctx: &AppCtx, chain_id: &str) -> Result<(), String> {
-    let chain_dir = ctx.workspaces_dir.join(chain_id);
+    let (workspace, local_id) = parse_id(chain_id);
+    let chain_dir = ctx.workspaces_dir.join(workspace).join(&local_id);
+
     if !chain_dir.is_dir() {
         return Err(format!("Chain with ID '{}' not found.", chain_id));
     }
@@ -54,7 +56,7 @@ pub fn run(ctx: &AppCtx, chain_id: &str) -> Result<(), String> {
         .map_err(|e| format!("Editor error: {}", e))?
         .unwrap_or_default();
 
-    let prompt_id = format!("{}/{}", chain_id, next_step);
+    let prompt_id = format!("{}/{}", local_id, next_step);
     let pd = PromptData {
         id: prompt_id,
         title: prompt_title.clone(),

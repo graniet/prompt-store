@@ -5,7 +5,7 @@ use prompt_store::core::storage::AppCtx;
 
 pub mod cli;
 
-/// Entry point of the application
+/// Entry point of the application.
 #[tokio::main]
 async fn main() {
     if let Err(e) = run().await {
@@ -14,7 +14,7 @@ async fn main() {
     }
 }
 
-/// Run the CLI application
+/// Initializes context and runs the CLI application.
 async fn run() -> Result<(), String> {
     let cli = Cli::parse();
     let ctx = AppCtx::init()?;

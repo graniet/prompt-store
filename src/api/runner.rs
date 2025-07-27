@@ -122,6 +122,30 @@ impl<'a> ParallelGroupBuilder<'a> {
         });
         self
     }
+    
+    /// Adds a conditional step from the store to the parallel group.
+    pub fn step_if<F>(mut self, output_key: &str, prompt_id_or_title: &str, condition: F) -> Self
+    where
+        F: Fn(&HashMap<String, String>) -> bool + Send + Sync + 'a,
+    {
+        self.steps.push(ChainStepDefinition {
+            output_key: output_key.to_string(),
+            source: PromptSource::Stored(prompt_id_or_title.to_string()),
+            provider_id: None,
+            mode: MultiChainStepMode::Completion,
+            condition: Some(Box::new(condition)),
+            fallback_source: None,
+        });
+        self
+    }
+
+    /// Sets a fallback prompt from the store for the last added step in the group.
+    pub fn on_error_stored(mut self, fallback_id_or_title: &str) -> Self {
+        if let Some(last_step) = self.steps.last_mut() {
+            last_step.fallback_source = Some(PromptSource::Stored(fallback_id_or_title.to_string()));
+        }
+        self
+    }
 
     /// Adds a raw prompt step to the parallel group.
     pub fn step_raw(mut self, output_key: &str, prompt_content: &str) -> Self {
@@ -366,14 +390,23 @@ impl<'a> ChainRunner<'a> {
             StoreError::Configuration(format!("Provider '{}' not found in registry", provider_id))
         })?;
 
-        let prompt_content = match source {
-            PromptSource::Stored(id) => self.store.find_prompt(id)?.content,
-            PromptSource::Raw(content) => content.clone(),
+        let prompt_data = match source {
+            PromptSource::Stored(id) => self.store.find_prompt(id)?,
+            PromptSource::Raw(content) => {
+                // For raw prompts, we don't have stored schema, so validation is simpler
+                crate::core::storage::PromptData {
+                    id: "raw".to_string(),
+                    title: "Raw Prompt".to_string(),
+                    content: content.clone(),
+                    tags: vec![],
+                    schema: None,
+                }
+            }
         };
 
         let rendered = {
             let ctx = context.lock().unwrap();
-            render_template(&prompt_content, &ctx)
+            render_template(&prompt_data.content, &ctx)
         };
 
         use llm::chat::ChatMessage;
@@ -388,7 +421,10 @@ fn render_template(template: &str, vars: &HashMap<String, String>) -> String {
     let re = Regex::new(r"\{\{\s*(\w+)\s*\}\}").unwrap();
     re.replace_all(template, |caps: &regex::Captures| {
         let key = &caps[1];
-        vars.get(key).map(|s| s.as_str()).unwrap_or("").to_string()
+        vars.get(key)
+            .map(|s| s.as_str())
+            .unwrap_or("")
+            .to_string()
     })
     .into_owned()
 }
